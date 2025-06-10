@@ -29,7 +29,7 @@ if "step" not in st.session_state:
 if "responses" not in st.session_state:
     st.session_state.responses = {}
 
-# --- ElevenLabs TTS ---
+# --- ElevenLabs TTS with error feedback ---
 def speak_text(text):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
     headers = {
@@ -44,11 +44,14 @@ def speak_text(text):
             "similarity_boost": 0.75
         }
     }
+
     response = requests.post(url, headers=headers, json=data)
+
     if response.status_code == 200:
         st.audio(BytesIO(response.content), format="audio/mp3")
     else:
         st.error("Failed to generate audio from ElevenLabs.")
+        st.code(f"Status: {response.status_code}\nResponse: {response.text}")
 
 # --- Chat Display ---
 st.title("🧠 GenAI Use Case Collection Chatbot")

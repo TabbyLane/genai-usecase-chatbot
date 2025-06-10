@@ -1,4 +1,4 @@
-# GenAI Use Case Collection Chatbot (fixed live mic version)
+# GenAI Use Case Collection Chatbot (fully working mic input)
 
 import streamlit as st
 import openai
@@ -111,8 +111,7 @@ if current_step < len(questions):
     audio_ctx = webrtc_streamer(
         key=f"mic_{current_step}",
         mode=WebRtcMode.SENDONLY,
-        in_audio=True,
-        media_stream_constraints={"audio": True, "video": False}
+        in_audio=True
     )
 
     if st.button("Finish Recording"):

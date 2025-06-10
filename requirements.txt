@@ -2,3 +2,5 @@ streamlit
 openai
 Pillow
 requests
+gspread
+google-auth

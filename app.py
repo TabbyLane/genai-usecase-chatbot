@@ -1,10 +1,14 @@
-# GenAI Use Case Collection Chatbot (with ElevenLabs TTS + Whisper STT)
+# GenAI Use Case Collection Chatbot (Full Version with TTS, STT, and Google Sheets)
 
 import streamlit as st
 import openai
 import os
 import requests
+import json
+import gspread
+from google.oauth2.service_account import Credentials
 from io import BytesIO
+from datetime import datetime
 
 # --- Secrets ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -50,6 +54,34 @@ def speak_text(text):
         st.error("Failed to generate audio from ElevenLabs.")
         st.code(f"Status: {response.status_code}\nResponse: {response.text}")
 
+# --- Google Sheets Setup ---
+def write_usecase_to_gsheet(use_case_data):
+    creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT")
+    if creds_json is None:
+        st.error("Google service account credentials not found in secrets.")
+        return
+
+    creds_dict = json.loads(creds_json)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    client = gspread.authorize(creds)
+
+    # Open by name
+    sheet = client.open("GenAI Use Cases").worksheet("UseCases")
+
+    # Prepare row from dict
+    row = [
+        str(st.session_state.get("timestamp", "")),
+        use_case_data.get("What GenAI tool(s) did you use?", ""),
+        use_case_data.get("How did you use it in your teaching or assessment?", ""),
+        use_case_data.get("What were your goals or intended outcomes?", ""),
+        use_case_data.get("What was the observed impact?", ""),
+        use_case_data.get("What challenges or concerns did you face?", ""),
+        use_case_data.get("What would you do differently next time?", ""),
+        use_case_data.get("Do you have any advice for others wanting to try this?", ""),
+        use_case_data.get("Image Caption", "")
+    ]
+    sheet.append_row(row, value_input_option="USER_ENTERED")
+
 # --- Chat Display ---
 st.title("🧠 GenAI Use Case Collection Chatbot")
 st.write("Chat with this assistant to share how you're using GenAI in teaching and assessment.")
@@ -82,5 +114,14 @@ else:
     st.markdown("---")
     uploaded_file = st.file_uploader("Upload a file related to your use case (e.g., screenshot, rubric, student work)", type=["png", "jpg", "jpeg", "pdf"])
     caption = st.text_input("Add a caption or description for the uploaded file")
+
     if st.button("Submit Use Case"):
-        st.success("Your use case has been submitted (this is where database integration would go).")
+        st.session_state["timestamp"] = datetime.utcnow().isoformat()
+
+        use_case = st.session_state.responses.copy()
+        use_case["Image Caption"] = caption
+
+        write_usecase_to_gsheet(use_case)
+
+        st.success("✅ Your use case has been submitted to Google Sheets!")
+        st.balloons()

@@ -1,4 +1,4 @@
-# GenAI Use Case Collection Chatbot (fully working mic input)
+# GenAI Use Case Collection Chatbot (simplified mic config)
 
 import streamlit as st
 import openai
@@ -9,7 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from io import BytesIO
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer
 import av
 import tempfile
 
@@ -108,11 +108,7 @@ if current_step < len(questions):
 
     # Live mic input
     st.markdown("### 🎤 Speak your answer")
-    audio_ctx = webrtc_streamer(
-        key=f"mic_{current_step}",
-        mode=WebRtcMode.SENDONLY,
-        in_audio=True
-    )
+    audio_ctx = webrtc_streamer(key=f"mic_{current_step}")
 
     if st.button("Finish Recording"):
         if hasattr(st.session_state, "audio_buffer"):
@@ -146,10 +142,4 @@ else:
     if st.button("Submit Use Case"):
         st.session_state["timestamp"] = datetime.utcnow().isoformat()
 
-        use_case = st.session_state.responses.copy()
-        use_case["Image Caption"] = caption
-
-        write_usecase_to_gsheet(use_case)
-
-        st.success("✅ Your use case has been submitted to Google Sheets!")
-        st.balloons()
+        use_case = st.session_state.res

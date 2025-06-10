@@ -1,4 +1,4 @@
-# GenAI Use Case Collection Chatbot (simplified mic config)
+# GenAI Use Case Collection Chatbot (mic-only, fixed recording and no echo)
 
 import streamlit as st
 import openai
@@ -34,10 +34,8 @@ if "step" not in st.session_state:
     st.session_state.step = 0
 if "responses" not in st.session_state:
     st.session_state.responses = {}
-if "recording_done" not in st.session_state:
-    st.session_state.recording_done = False
-if "last_transcription" not in st.session_state:
-    st.session_state.last_transcription = ""
+if "audio_buffer" not in st.session_state:
+    st.session_state.audio_buffer = []
 
 # --- ElevenLabs TTS ---
 def speak_text(text):
@@ -77,7 +75,7 @@ def write_usecase_to_gsheet(use_case_data):
 
     # Prepare row from dict
     row = [
-        str(st.session_state.get("timestamp", "")),
+        str(datetime.utcnow().isoformat()),
         use_case_data.get("What GenAI tool(s) did you use?", ""),
         use_case_data.get("How did you use it in your teaching or assessment?", ""),
         use_case_data.get("What were your goals or intended outcomes?", ""),
@@ -89,12 +87,14 @@ def write_usecase_to_gsheet(use_case_data):
     ]
     sheet.append_row(row, value_input_option="USER_ENTERED")
 
-# --- Audio Processor ---
-def audio_processor_callback(frame: av.AudioFrame):
-    if not hasattr(st.session_state, "audio_buffer"):
-        st.session_state.audio_buffer = []
-    st.session_state.audio_buffer.append(frame.to_ndarray().tobytes())
-    return frame
+# --- Audio Frame Collector ---
+class AudioProcessor:
+    def __init__(self):
+        self.recorded_frames = []
+
+    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+        st.session_state.audio_buffer.append(frame.to_ndarray().tobytes())
+        return frame
 
 # --- Chat Display ---
 st.title("🧠 GenAI Use Case Collection Chatbot")
@@ -106,12 +106,16 @@ if current_step < len(questions):
     st.markdown(f"**{question}**")
     speak_text(question)
 
-    # Live mic input
     st.markdown("### 🎤 Speak your answer")
-    audio_ctx = webrtc_streamer(key=f"mic_{current_step}")
+    audio_ctx = webrtc_streamer(
+        key=f"mic_{current_step}",
+        audio_processor_factory=AudioProcessor,
+        sendback_audio=False,
+        video_html_attrs={"style": {"display": "none"}}
+    )
 
     if st.button("Finish Recording"):
-        if hasattr(st.session_state, "audio_buffer"):
+        if st.session_state.audio_buffer:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                 for chunk in st.session_state.audio_buffer:
                     f.write(chunk)
@@ -119,11 +123,12 @@ if current_step < len(questions):
                 f.seek(0)
                 transcript = openai.Audio.transcribe("whisper-1", f.name)
                 response = transcript["text"]
-                st.session_state.last_transcription = response
                 st.session_state.responses[question] = response
                 st.session_state.audio_buffer = []
                 st.session_state.step += 1
                 st.experimental_rerun()
+        else:
+            st.warning("No audio captured. Try recording again.")
 
     st.markdown("Or type instead:")
     typed = st.text_input("Type your response:", key=f"response_{current_step}")
@@ -140,6 +145,10 @@ else:
     caption = st.text_input("Add a caption or description for the uploaded file")
 
     if st.button("Submit Use Case"):
-        st.session_state["timestamp"] = datetime.utcnow().isoformat()
+        use_case = st.session_state.responses.copy()
+        use_case["Image Caption"] = caption
 
-        use_case = st.session_state.res
+        write_usecase_to_gsheet(use_case)
+
+        st.success("✅ Your use case has been submitted to Google Sheets!")
+        st.balloons()

@@ -1,4 +1,4 @@
-# GenAI Use Case Collection Chatbot (Full Version with TTS, STT, and Google Sheets)
+# GenAI Use Case Collection Chatbot (with ElevenLabs TTS, Whisper STT, Google Sheets, and Live Mic Input)
 
 import streamlit as st
 import openai
@@ -9,6 +9,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 from io import BytesIO
 from datetime import datetime
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
+import av
+import tempfile
 
 # --- Secrets ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -31,6 +34,10 @@ if "step" not in st.session_state:
     st.session_state.step = 0
 if "responses" not in st.session_state:
     st.session_state.responses = {}
+if "recording_done" not in st.session_state:
+    st.session_state.recording_done = False
+if "last_transcription" not in st.session_state:
+    st.session_state.last_transcription = ""
 
 # --- ElevenLabs TTS ---
 def speak_text(text):
@@ -82,6 +89,13 @@ def write_usecase_to_gsheet(use_case_data):
     ]
     sheet.append_row(row, value_input_option="USER_ENTERED")
 
+# --- Audio Processor ---
+def audio_processor_callback(frame: av.AudioFrame):
+    if not hasattr(st.session_state, "audio_buffer"):
+        st.session_state.audio_buffer = []
+    st.session_state.audio_buffer.append(frame.to_ndarray().tobytes())
+    return frame
+
 # --- Chat Display ---
 st.title("🧠 GenAI Use Case Collection Chatbot")
 st.write("Chat with this assistant to share how you're using GenAI in teaching and assessment.")
@@ -92,22 +106,38 @@ if current_step < len(questions):
     st.markdown(f"**{question}**")
     speak_text(question)
 
-    # Text input fallback
-    response = st.text_input("Type your response:", key=f"response_{current_step}")
+    # Live mic input
+    st.markdown("### 🎤 Speak your answer")
+    audio_ctx = webrtc_streamer(
+        key=f"mic_{current_step}",
+        mode=WebRtcMode.SENDONLY,
+        in_audio=True,
+        audio_processor_factory=lambda: type("AudioProcessor", (), {"recv": audio_processor_callback})(),
+        client_settings=ClientSettings(media_stream_constraints={"audio": True, "video": False})
+    )
 
-    # Voice upload + Whisper transcription
-    st.markdown("Or upload a spoken response (MP3 or WAV):")
-    audio_file = st.file_uploader("Upload your voice response", type=["mp3", "wav"], key=f"audio_{current_step}")
+    if st.button("Finish Recording"):
+        if hasattr(st.session_state, "audio_buffer"):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                for chunk in st.session_state.audio_buffer:
+                    f.write(chunk)
+                f.flush()
+                f.seek(0)
+                transcript = openai.Audio.transcribe("whisper-1", f.name)
+                response = transcript["text"]
+                st.session_state.last_transcription = response
+                st.session_state.responses[question] = response
+                st.session_state.audio_buffer = []
+                st.session_state.step += 1
+                st.experimental_rerun()
 
-    if audio_file is not None:
-        transcript = openai.Audio.transcribe("whisper-1", audio_file)
-        response = transcript["text"]
-        st.success("Transcribed: " + response)
-
-    if response:
-        st.session_state.responses[question] = response
+    st.markdown("Or type instead:")
+    typed = st.text_input("Type your response:", key=f"response_{current_step}")
+    if typed:
+        st.session_state.responses[question] = typed
         st.session_state.step += 1
         st.experimental_rerun()
+
 else:
     st.success("✅ Thank you! Here's a summary of your responses:")
     st.json(st.session_state.responses)

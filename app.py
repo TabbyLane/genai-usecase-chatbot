@@ -1,10 +1,9 @@
-# GenAI Use Case Collection Chatbot (with ElevenLabs voice)
+# GenAI Use Case Collection Chatbot (with ElevenLabs TTS + Whisper STT)
 
 import streamlit as st
 import openai
 import os
 import requests
-from PIL import Image
 from io import BytesIO
 
 # --- Secrets ---
@@ -29,7 +28,7 @@ if "step" not in st.session_state:
 if "responses" not in st.session_state:
     st.session_state.responses = {}
 
-# --- ElevenLabs TTS with error feedback ---
+# --- ElevenLabs TTS ---
 def speak_text(text):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
     headers = {
@@ -44,9 +43,7 @@ def speak_text(text):
             "similarity_boost": 0.75
         }
     }
-
     response = requests.post(url, headers=headers, json=data)
-
     if response.status_code == 200:
         st.audio(BytesIO(response.content), format="audio/mp3")
     else:
@@ -62,7 +59,19 @@ if current_step < len(questions):
     question = questions[current_step]
     st.markdown(f"**{question}**")
     speak_text(question)
-    response = st.text_input("Your response:", key=f"response_{current_step}")
+
+    # Text input fallback
+    response = st.text_input("Type your response:", key=f"response_{current_step}")
+
+    # Voice upload + Whisper transcription
+    st.markdown("Or upload a spoken response (MP3 or WAV):")
+    audio_file = st.file_uploader("Upload your voice response", type=["mp3", "wav"], key=f"audio_{current_step}")
+
+    if audio_file is not None:
+        transcript = openai.Audio.transcribe("whisper-1", audio_file)
+        response = transcript["text"]
+        st.success("Transcribed: " + response)
+
     if response:
         st.session_state.responses[question] = response
         st.session_state.step += 1

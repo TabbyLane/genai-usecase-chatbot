@@ -1,4 +1,4 @@
-# GenAI Use Case Collection Chatbot (with ElevenLabs TTS, Whisper STT, Google Sheets, and Live Mic Input)
+# GenAI Use Case Collection Chatbot (fixed live mic version)
 
 import streamlit as st
 import openai
@@ -9,7 +9,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from io import BytesIO
 from datetime import datetime
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 import tempfile
 
@@ -112,8 +112,7 @@ if current_step < len(questions):
         key=f"mic_{current_step}",
         mode=WebRtcMode.SENDONLY,
         in_audio=True,
-        audio_processor_factory=lambda: type("AudioProcessor", (), {"recv": audio_processor_callback})(),
-        client_settings=ClientSettings(media_stream_constraints={"audio": True, "video": False})
+        media_stream_constraints={"audio": True, "video": False}
     )
 
     if st.button("Finish Recording"):
